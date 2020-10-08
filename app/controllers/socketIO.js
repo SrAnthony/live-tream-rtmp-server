@@ -5,6 +5,8 @@ const Room = mongoose.model('Room');
 const Utils = require('../utils');
 const LiveStatus = require('../liveStatus');
 
+const RoomsState = {}
+
 module.exports = (io) => {
   function emitListLiveStreamInfo() {
     return Room.find({}, (error, results) => {
@@ -31,6 +33,17 @@ module.exports = (io) => {
       console.log('Join room', data);
       const { userName, roomName } = data;
       if (!userName || !roomName) return;
+
+      Room.findOneAndUpdate(
+        { roomName },
+        {
+          $inc: { countViewer: 1 },
+        },
+        { new: true, useFindAndModify: false },
+        (err, result) => {
+          io.in(roomName).emit('send-viewer-count', result);
+        }
+      );
       socket.join(roomName);
     });
 
@@ -41,6 +54,19 @@ module.exports = (io) => {
       console.log('Leave room', data);
       const { userName, roomName } = data;
       if (!userName || !roomName) return;
+
+      Room.findOneAndUpdate(
+        { roomName },
+        {
+          $inc: { countViewer: -1 },
+        },
+        { new: true, useFindAndModify: false },
+        (err, result) => {
+          console.log({ err, result })
+          io.in(roomName).emit('send-viewer-count', result);
+        }
+      );
+
       socket.leave(roomName);
     });
 
@@ -51,6 +77,7 @@ module.exports = (io) => {
       console.log('Prepare live stream', data);
       const { userName, roomName } = data;
       if (!userName || !roomName) return;
+
       return Room.findOneAndUpdate(
         { userName, roomName },
         { liveStatus: LiveStatus.PREPARE, createdAt: Utils.getCurrentDateTime() },
